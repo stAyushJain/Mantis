@@ -100,6 +100,14 @@ or for the launcher: `MOCKMASTER_UI_PORT` (legacy name, still works).
 Kotlin 2.1.10 · Compose Multiplatform 1.7.3 · Ktor 3.0.3 ·
 kotlinx-serialization 1.7.3 · Gradle 8.10.2 · Rust stable.
 
+## SS
+<img width="2543" height="1293" alt="Screenshot 2026-05-31 at 2 20 04 PM" src="https://github.com/user-attachments/assets/2066a361-1658-41d4-91fb-bd889710aadb" />
+<img width="2545" height="1314" alt="Screenshot 2026-05-31 at 2 19 52 PM" src="https://github.com/user-attachments/assets/4d2f5dd4-9c86-461a-b33c-8e25fefa9e55" />
+<img width="2537" height="1315" alt="Screenshot 2026-05-31 at 2 19 30 PM" src="https://github.com/user-attachments/assets/6b9a5b74-8322-43df-95c3-771a16942277" />
+<img width="2547" height="1313" alt="Screenshot 2026-05-31 at 2 19 08 PM" src="https://github.com/user-attachments/assets/705c5e62-7c46-4a11-8200-0ce17c7a764f" />
+<img width="802" height="703" alt="Screenshot 2026-05-31 at 2 07 39 PM" src="https://github.com/user-attachments/assets/bcf45498-9940-4ee8-bda8-e2222a68d772" />
+
+
 ## Status
 
 This is a **beta**. The protocol, API, and storage format may change
