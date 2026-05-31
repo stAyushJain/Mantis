@@ -1,0 +1,51 @@
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" id="svg-logomark" viewBox="0 0 512 512" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="lm-mantis-green" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00FF87"/>
+            <stop offset="100%" stop-color="#60EFFF"/>
+        </linearGradient>
+        <linearGradient id="lm-mantis-pink" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#FF0844"/>
+            <stop offset="100%" stop-color="#FFB199"/>
+        </linearGradient>
+        <linearGradient id="lm-mantis-glass" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="rgba(0, 255, 135, 0.15)"/>
+            <stop offset="100%" stop-color="rgba(96, 239, 255, 0.05)"/>
+        </linearGradient>
+        <filter id="lm-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="16" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+    </defs>
+
+    <!-- Background Glow behind Mantis -->
+    <circle cx="256" cy="256" r="120" fill="#00FF87" opacity="0.15" filter="url(#lm-glow)"/>
+
+    <!-- Core Icon: The Cyber Mantis -->
+    <g filter="url(#lm-glow)">
+        <!-- Antennae (Signal Interceptors) -->
+        <path d="M 206 160 Q 180 110 146 86" stroke="url(#lm-mantis-green)" stroke-width="12" stroke-linecap="round" fill="none" opacity="0.8"/>
+        <path d="M 306 160 Q 332 110 366 86" stroke="url(#lm-mantis-green)" stroke-width="12" stroke-linecap="round" fill="none" opacity="0.8"/>
+
+        <!-- Mantis Claws formed perfectly by Code Brackets: < and > -->
+        <!-- Left Bracket < -->
+        <path d="M 226 380 L 136 280 L 216 200" stroke="url(#lm-mantis-green)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <!-- Right Bracket > -->
+        <path d="M 286 380 L 376 280 L 296 200" stroke="url(#lm-mantis-green)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+        <!-- Mantis Head (Glassmorphism Triangle) -->
+        <path d="M 186 160 Q 256 180 326 160 L 256 230 Z" fill="url(#lm-mantis-glass)" stroke="url(#lm-mantis-green)" stroke-width="8" stroke-linejoin="round"/>
+
+        <!-- Glowing Cyber Eyes -->
+        <circle cx="220" cy="184" r="10" fill="#60EFFF"/>
+        <circle cx="292" cy="184" r="10" fill="#60EFFF"/>
+
+        <!-- Intercepted Data Payload (The Mocked Node) -->
+        <circle cx="256" cy="290" r="28" fill="url(#lm-mantis-pink)"/>
+
+        <!-- API Data Sparks -->
+        <circle cx="206" cy="250" r="6" fill="#00FF87"/>
+        <circle cx="306" cy="330" r="8" fill="#FEE140"/>
+        <circle cx="256" cy="350" r="5" fill="#60EFFF"/>
+    </g>
+</svg>

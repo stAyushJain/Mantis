@@ -1,0 +1,33 @@
+# Keep the Docker build context small.
+# Note: paths are relative to the Dockerfile location.
+
+# Build outputs
+**/target/
+**/build/
+**/.gradle/
+**/node_modules/
+**/kotlin-js-store/
+
+# Persistent state — never bake user data into the image.
+**/workspace_data/
+**/mantis-data/
+
+# IDE / OS noise
+.idea/
+.vscode/
+**/.DS_Store
+*.iml
+*.log
+
+# Local-only configs
+local.properties
+.env
+.env.*
+
+# Docker artifacts that might be lying around
+*.tar
+*.tar.gz
+
+# Don't ship the local launcher script or editor caches
+mockmaster.sh
+.cursor/

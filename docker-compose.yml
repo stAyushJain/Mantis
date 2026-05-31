@@ -1,0 +1,38 @@
+# Mantis — single-machine deployment.
+# Run `docker compose up --build` and Mantis is reachable at:
+#   • UI    → http://127.0.0.1:5173
+#   • API   → http://127.0.0.1:3000
+#   • Proxy → http://127.0.0.1:8080  (point your phone/browser at this)
+#
+# Override any port by setting an env var before bringing it up, e.g.:
+#   MANTIS_UI_PORT=5180 docker compose up -d
+#
+# Workspace data is mounted from your host so it survives image upgrades.
+# By default it lives under ./mantis-data — change MANTIS_DATA_DIR if you want.
+#
+# To pull a pre-built image instead of building locally, set MANTIS_IMAGE
+# to whatever registry path you (or your team) publish to, e.g.
+#   export MANTIS_IMAGE=ghcr.io/<user>/mantis:latest
+
+services:
+  mantis:
+    image: ${MANTIS_IMAGE:-mantis:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mantis
+    restart: unless-stopped
+    ports:
+      - "${MANTIS_API_PORT:-3000}:3000"
+      - "${MANTIS_UI_PORT:-5173}:5173"
+      - "${MANTIS_PROXY_PORT:-8080}:8080"
+    volumes:
+      # Per-user workspace data lives on the host. Each teammate runs their
+      # own container, so other people's data is never on this machine.
+      - "${MANTIS_DATA_DIR:-./mantis-data}:/app/workspace_data"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:3000/server/info', timeout=2); sys.exit(0)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

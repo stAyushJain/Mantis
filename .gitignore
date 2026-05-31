@@ -1,0 +1,36 @@
+# --- Build outputs ---
+**/target/
+**/build/
+**/.gradle/
+**/.kotlin/
+**/node_modules/
+**/kotlin-js-store/
+
+# --- Persistent runtime state (per-user mocks must never be committed) ---
+**/workspace_data/
+mantis-data/
+
+# --- IDE / OS noise ---
+.idea/
+.vscode/
+**/.DS_Store
+*.iml
+*.log
+*.swp
+
+# --- Local-only configs ---
+local.properties
+.env
+.env.*
+
+# --- Docker artifacts ---
+*.tar
+*.tar.gz
+
+# --- macOS / Linux junk ---
+.AppleDouble
+.LSOverride
+._*
+
+# --- Editor caches ---
+.cursor/

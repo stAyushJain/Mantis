@@ -1,0 +1,31 @@
+[package]
+name = "mockmaster_backend"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7.5", features = ["macros", "tokio"] }
+tokio = { version = "1.37", features = ["full"] }
+
+# Data & APIs
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tower-http = { version = "0.6.1", features = ["cors", "fs"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }
+
+# MITM Proxy Engine & Cryptography
+hudsucker = "0.24"
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+rustls = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2.1"
+hyper-util = { version = "0.1", features = ["client-legacy", "tokio", "http1", "http2"] }
+
+# Streaming
+futures-util = "0.3"
+http-body-util = "0.1"
+bytes = "1"
+
+# Local IP detection (for "share with phone" UX)
+local-ip-address = "0.6"
