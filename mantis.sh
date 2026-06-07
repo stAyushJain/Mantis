@@ -99,6 +99,71 @@ local_ip() {
         || echo "127.0.0.1"
 }
 
+# Make rustup-installed cargo visible even when launched outside an interactive
+# shell (e.g. double-clicked, run from another script, or from a GUI launcher).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -f "$HOME/.cargo/env" ]; then
+        # shellcheck disable=SC1091
+        . "$HOME/.cargo/env"
+    elif [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
+# Detect platform once for install-hint messages.
+case "$(uname -s)" in
+    Darwin) PLATFORM="macos" ;;
+    Linux)  PLATFORM="linux" ;;
+    *)      PLATFORM="other" ;;
+esac
+
+# ensure_cmd <command> <friendly-name> — verify a binary exists, or print a
+# platform-aware install hint and exit non-zero. Keep messages short and
+# copy-pasteable so users can fix the problem in one step.
+ensure_cmd() {
+    local cmd="$1" name="$2"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        return 0
+    fi
+    err "missing required tool: $name (\`$cmd\` not found on PATH)"
+    case "$cmd" in
+        cargo|rustc|rustup)
+            printf "  install Rust (includes %s):\n" "$cmd"
+            printf "    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n"
+            printf "  then restart your shell, or run: source \"\$HOME/.cargo/env\"\n"
+            ;;
+        java)
+            if [ "$PLATFORM" = "macos" ]; then
+                printf "  install a JDK (17+ recommended):\n"
+                printf "    brew install --cask temurin\n"
+            else
+                printf "  install a JDK (17+ recommended), e.g.:\n"
+                printf "    sudo apt-get install -y temurin-17-jdk   # or your distro's openjdk-17-jdk\n"
+            fi
+            ;;
+        python3)
+            if [ "$PLATFORM" = "macos" ]; then
+                printf "  install Python 3:\n"
+                printf "    brew install python\n"
+            else
+                printf "  install Python 3, e.g.:\n"
+                printf "    sudo apt-get install -y python3\n"
+            fi
+            ;;
+        nc|curl)
+            if [ "$PLATFORM" = "macos" ]; then
+                printf "  install via Homebrew:\n    brew install %s\n" "$cmd"
+            else
+                printf "  install via your package manager, e.g.:\n    sudo apt-get install -y %s\n" "$cmd"
+            fi
+            ;;
+        *)
+            printf "  install \`%s\` using your platform's package manager.\n" "$cmd"
+            ;;
+    esac
+    return 1
+}
+
 # ----- backend -----
 
 start_be() {
@@ -116,8 +181,33 @@ start_be() {
         return 1
     fi
 
+    ensure_cmd cargo "Rust toolchain" || return 1
+
     log "building backend (cargo build, may take a minute on first run)..."
-    (cd "$BE_DIR" && cargo build --quiet) >>"$LOG_DIR/be-build.log" 2>&1
+    log "  build log: $LOG_DIR/be-build.log"
+    : > "$LOG_DIR/be-build.log"
+    # Stream a condensed view to the terminal (Compiling/Finished/error/warning
+    # lines only) while keeping the full output in the log file. We use
+    # PIPESTATUS to grab cargo's exit code so a clean build (where grep
+    # finds zero matches and exits 1) isn't mistaken for a build failure.
+    # `set +e` around the pipeline so `set -e` doesn't abort the script
+    # before we get a chance to read PIPESTATUS and print a helpful error.
+    local build_rc=0
+    set +e
+    (cd "$BE_DIR" && cargo build --color always 2>&1) \
+        | tee "$LOG_DIR/be-build.log" \
+        | { grep --color=never -E "^(   Compiling|    Finished|    Building|error|warning|help:|note:)" || true; }
+    build_rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$build_rc" -ne 0 ]; then
+        err "backend build FAILED (cargo exited $build_rc) — last 40 lines of $LOG_DIR/be-build.log:"
+        printf -- "----------------------------------------\n"
+        tail -n 40 "$LOG_DIR/be-build.log" || true
+        printf -- "----------------------------------------\n"
+        err "fix the errors above and re-run \`$(basename "$0") start\`"
+        return 1
+    fi
+    ok "backend build done"
 
     log "starting backend..."
     # Run the prebuilt binary directly so the PID we record is the real
