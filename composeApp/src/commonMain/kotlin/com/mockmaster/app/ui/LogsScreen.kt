@@ -83,7 +83,7 @@ fun LogsScreen(state: AppState) {
     var promote by remember { mutableStateOf<InterceptedCall?>(null) }
 
     val filtered = remember(state.logs.toList(), query, methodFilter, statusFilter, matchFilter) {
-        state.logs.filter { call ->
+        state.logs.asSequence().filter { call ->
             // Text filter
             val q = query.trim()
             val matchesText = q.isEmpty() ||
@@ -109,6 +109,11 @@ fun LogsScreen(state: AppState) {
             }
             matchesText && matchesMethod && matchesStatus && matchesMatched
         }
+            // Newest first. Backend's GET /logs returns oldest-first while the
+            // SSE stream prepends new entries, so the bootstrap list can come
+            // in mixed order. Sort by timestamp descending for a consistent UX.
+            .sortedByDescending { it.timestamp }
+            .toList()
     }
 
     Row(Modifier.fillMaxSize()) {
@@ -440,9 +445,12 @@ private fun LogDetail(call: InterceptedCall, onPromote: () -> Unit) {
                 if (call.requestBody.isBlank()) Text("(empty)", color = MockColors.textSecondary)
                 else CodeBlock(call.requestBody)
             }
-            if (call.matched) {
-                Spacer(Modifier.height(12.dp))
-                DetailSection("Mocked response") {
+            Spacer(Modifier.height(12.dp))
+            val responseTitle = if (call.matched) "Mocked response" else "Upstream response"
+            DetailSection(responseTitle) {
+                if (call.responseBody.isBlank()) {
+                    Text("(empty)", color = MockColors.textSecondary)
+                } else {
                     CodeBlock(formatJsonOrNull(call.responseBody) ?: call.responseBody)
                 }
             }

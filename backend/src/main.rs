@@ -272,6 +272,7 @@ async fn main() {
                     active_user: active_user.clone(),
                     log_tx: log_tx.clone(),
                     log_buffer: log_buffer.clone(),
+                    pending_passthrough: None,
                 };
 
                 if let Err(e) = build_and_spawn_proxy(proxy_addr, handler, sd_rx, proxy_status.clone()) {

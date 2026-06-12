@@ -5,6 +5,7 @@ use hudsucker::{
     Body as HudBody, HttpContext, HttpHandler, RequestOrResponse,
 };
 use hudsucker::hyper::{Request, Response, StatusCode};
+use hudsucker::hyper_util::client::legacy::Error as UpstreamError;
 use http_body_util::BodyExt;
 use tokio::sync::broadcast;
 
@@ -18,6 +19,13 @@ pub struct MockHandler {
     pub active_user: Arc<Mutex<String>>,
     pub log_tx: broadcast::Sender<InterceptedCall>,
     pub log_buffer: Arc<Mutex<VecDeque<InterceptedCall>>>,
+    /// Passthrough request waiting for its upstream response so we can attach
+    /// the real status + body to the log entry. Set in `handle_request`,
+    /// drained in `handle_response`. Per the hudsucker contract each
+    /// request/response pair is served by the same handler instance, so a
+    /// plain `Option` is sufficient (the connection processes one request at
+    /// a time).
+    pub pending_passthrough: Option<InterceptedCall>,
 }
 
 impl MockHandler {
@@ -225,7 +233,11 @@ impl HttpHandler for MockHandler {
             return RequestOrResponse::Response(response);
         }
 
-        let intercepted = InterceptedCall {
+        // Passthrough: stash a partially-filled log entry. `handle_response`
+        // will fill in the real status + body and emit it. We log nothing here
+        // so users always see the final outcome (including errors handled by
+        // `handle_error`).
+        self.pending_passthrough = Some(InterceptedCall {
             id: uuid::Uuid::new_v4().to_string(),
             method: method.clone(),
             url: url.clone(),
@@ -238,10 +250,68 @@ impl HttpHandler for MockHandler {
             request_body: req_body_str,
             response_body: String::new(),
             timestamp: chrono::Utc::now().to_rfc3339(),
-        };
-        self.push_log(intercepted);
+        });
 
         let req = Request::from_parts(parts, HudBody::from(body_bytes));
         RequestOrResponse::Request(req)
+    }
+
+    async fn handle_response(
+        &mut self,
+        _ctx: &HttpContext,
+        res: Response<HudBody>,
+    ) -> Response<HudBody> {
+        // Mocked responses we constructed ourselves carry this marker — we
+        // already logged them in `handle_request`, so just pass through.
+        if res.headers().get("X-MockMaster-Intercepted").is_some() {
+            return res;
+        }
+
+        let Some(mut pending) = self.pending_passthrough.take() else {
+            return res;
+        };
+
+        let status = res.status().as_u16();
+        let (parts, body) = res.into_parts();
+        let body_bytes = match body.collect().await {
+            Ok(c) => c.to_bytes(),
+            Err(_) => bytes::Bytes::new(),
+        };
+        // Cap captured body to avoid blowing up the in-memory ring buffer on
+        // large downloads. 256 KB is more than enough for JSON APIs; for
+        // larger bodies we log the prefix and indicate truncation.
+        const MAX_LOG_BODY: usize = 256 * 1024;
+        let response_body = if body_bytes.len() > MAX_LOG_BODY {
+            let mut s = String::from_utf8_lossy(&body_bytes[..MAX_LOG_BODY]).into_owned();
+            s.push_str("\n…[truncated]");
+            s
+        } else {
+            String::from_utf8_lossy(&body_bytes).into_owned()
+        };
+
+        pending.status_code = status;
+        pending.response_body = response_body;
+        self.push_log(pending);
+
+        Response::from_parts(parts, HudBody::from(body_bytes))
+    }
+
+    async fn handle_error(
+        &mut self,
+        _ctx: &HttpContext,
+        err: UpstreamError,
+    ) -> Response<HudBody> {
+        // Upstream failed (DNS, TLS, connect refused, …). Still emit the log
+        // so the user sees the call that bombed, with a synthetic 502 status
+        // and the error string as the response body.
+        if let Some(mut pending) = self.pending_passthrough.take() {
+            pending.status_code = 502;
+            pending.response_body = format!("Upstream error: {err}");
+            self.push_log(pending);
+        }
+        Response::builder()
+            .status(StatusCode::BAD_GATEWAY)
+            .body(HudBody::from("upstream error"))
+            .unwrap()
     }
 }
