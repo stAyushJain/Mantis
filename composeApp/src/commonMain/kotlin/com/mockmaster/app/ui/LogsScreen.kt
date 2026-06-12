@@ -234,7 +234,7 @@ fun LogsScreen(state: AppState) {
                     ) { Text("Select an entry to view request/response.", color = MockColors.textSecondary) }
                 }
             } else {
-                LogDetail(sel, onPromote = { promote = sel })
+                LogDetail(sel, state = state, onPromote = { promote = sel })
             }
         }
     }
@@ -406,7 +406,7 @@ private fun SourceBadge(label: String) {
 }
 
 @Composable
-private fun LogDetail(call: InterceptedCall, onPromote: () -> Unit) {
+private fun LogDetail(call: InterceptedCall, state: AppState, onPromote: () -> Unit) {
     Card(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -420,6 +420,19 @@ private fun LogDetail(call: InterceptedCall, onPromote: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.weight(1f))
+                // Copy-as-cURL: rebuilds a reproducible cURL from the
+                // intercepted request (method + url + headers + body). Handy
+                // for sharing a failing call in chat or replaying it from a
+                // terminal without going through the device again.
+                OutlinedButton(onClick = {
+                    FileIo.copyToClipboard(buildCurlFor(call))
+                    state.showToast("cURL copied")
+                }) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Copy cURL")
+                }
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = onPromote) {
                     Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
@@ -447,7 +460,17 @@ private fun LogDetail(call: InterceptedCall, onPromote: () -> Unit) {
             }
             Spacer(Modifier.height(12.dp))
             val responseTitle = if (call.matched) "Mocked response" else "Upstream response"
-            DetailSection(responseTitle) {
+            DetailSectionWithCopy(
+                title = responseTitle,
+                copyEnabled = call.responseBody.isNotBlank(),
+                onCopy = {
+                    // Copy the pretty-printed version if it's parseable JSON,
+                    // otherwise the raw body. Mirrors what we render below.
+                    val text = formatJsonOrNull(call.responseBody) ?: call.responseBody
+                    FileIo.copyToClipboard(text)
+                    state.showToast("Response copied")
+                },
+            ) {
                 if (call.responseBody.isBlank()) {
                     Text("(empty)", color = MockColors.textSecondary)
                 } else {
@@ -465,6 +488,84 @@ private fun DetailSection(title: String, content: @Composable () -> Unit) {
         Spacer(Modifier.height(6.dp))
         content()
     }
+}
+
+/**
+ * Variant of [DetailSection] with an inline "copy" affordance on the right
+ * side of the header. Used for the response body where copying is by far
+ * the most common follow-up action (paste into a JSON viewer, attach to a
+ * bug report, etc.).
+ */
+@Composable
+private fun DetailSectionWithCopy(
+    title: String,
+    copyEnabled: Boolean,
+    onCopy: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.weight(1f))
+            if (copyEnabled) {
+                TextButton(onClick = onCopy) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Copy")
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        content()
+    }
+}
+
+/**
+ * Reconstruct a shell-quoted cURL command from an intercepted call so the
+ * user can paste it into a terminal or share it in chat.
+ *
+ * We deliberately:
+ *  - skip hop-by-hop and proxy-y headers that confuse a fresh client
+ *    (`Host`, `Content-Length` — curl regenerates these; `Proxy-*`,
+ *    `X-MockMaster-*` — Mantis-internal markers).
+ *  - emit `-X` only for non-GET (matches what most curl-copy tools do).
+ *  - include the body via `--data-binary @-` style? No — single-quoted
+ *    inline; simpler, and bodies stay <256 KB anyway thanks to the
+ *    backend cap.
+ *  - skip the body for GET/HEAD/DELETE where it's almost always empty
+ *    or non-sensical.
+ */
+private fun buildCurlFor(call: InterceptedCall): String {
+    val sb = StringBuilder("curl")
+    val method = call.method.uppercase()
+    if (method != "GET") {
+        sb.append(" -X ").append(method)
+    }
+    val skipHeaders = setOf(
+        "host", "content-length", "proxy-connection", "proxy-authorization",
+        "x-mockmaster-intercepted", "x-mockmaster-source",
+    )
+    for ((k, v) in call.requestHeaders) {
+        if (k.lowercase() in skipHeaders) continue
+        sb.append(" \\\n  -H ").append(shellSingleQuote("$k: $v"))
+    }
+    val hasBody = call.requestBody.isNotBlank() && method !in setOf("GET", "HEAD", "DELETE")
+    if (hasBody) {
+        sb.append(" \\\n  --data-raw ").append(shellSingleQuote(call.requestBody))
+    }
+    sb.append(" \\\n  ").append(shellSingleQuote(call.url))
+    return sb.toString()
+}
+
+/**
+ * Shell-safe single-quoting: wrap in single quotes; any inner single
+ * quote becomes `'\''` (close, escaped, reopen). This is the bullet-proof
+ * way to pass arbitrary bytes through bash/zsh without escape-character
+ * surprises.
+ */
+private fun shellSingleQuote(s: String): String {
+    val escaped = s.replace("'", "'\\''")
+    return "'$escaped'"
 }
 
 @Composable

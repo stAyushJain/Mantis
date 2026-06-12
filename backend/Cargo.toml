@@ -29,3 +29,11 @@ bytes = "1"
 
 # Local IP detection (for "share with phone" UX)
 local-ip-address = "0.6"
+
+# Push-notification adb helper
+percent-encoding = "2.3"
+
+# Decoding compressed upstream response bodies so the Logs panel shows
+# human-readable JSON instead of binary garbage.
+flate2 = "1.0"
+brotli = "7.0"
