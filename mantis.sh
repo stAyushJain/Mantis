@@ -22,6 +22,34 @@ warn() { printf "%s[mantis]%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
 err()  { printf "%s[mantis]%s %s\n" "$C_RED" "$C_RESET" "$*"; }
 ok()   { printf "%s[mantis]%s %s\n" "$C_GREEN" "$C_RESET" "$*"; }
 
+# Prints a heartbeat every N seconds until it's killed. Usage:
+#   heartbeat_start "backend build" 15 "$LOG_DIR/be-build.log"
+#   ... long command ...
+#   heartbeat_stop
+# Safe under `set -euo pipefail`; heartbeat_stop is idempotent.
+HEARTBEAT_PID=""
+heartbeat_start() {
+    local what="$1" every="${2:-15}" logf="${3:-}"
+    (
+        local t=0
+        while sleep "$every"; do
+            t=$((t + every))
+            local size=""
+            [ -n "$logf" ] && [ -f "$logf" ] && size=" · log $(wc -c <"$logf" | awk '{printf "%.1fMB", $1/1048576}')"
+            printf "%s[mantis]%s … %s still running (%ds elapsed%s)\n" "$C_DIM" "$C_RESET" "$what" "$t" "$size"
+        done
+    ) &
+    HEARTBEAT_PID=$!
+    disown "$HEARTBEAT_PID" 2>/dev/null || true
+}
+heartbeat_stop() {
+    if [ -n "${HEARTBEAT_PID:-}" ]; then
+        kill "$HEARTBEAT_PID" 2>/dev/null || true
+        wait "$HEARTBEAT_PID" 2>/dev/null || true
+        HEARTBEAT_PID=""
+    fi
+}
+
 usage() {
     cat <<EOF
 ${C_BOLD}Mantis launcher${C_RESET}
@@ -270,8 +298,7 @@ start_be() {
         return 1
     fi
 
-    log "building backend (cargo build, may take a minute on first run)..."
-    log "  build log: $LOG_DIR/be-build.log"
+    log "building backend — first build ~2-5 min (dep compile + link), subsequent ~5-20s. Streaming progress below; full log: $LOG_DIR/be-build.log"
     : > "$LOG_DIR/be-build.log"
     # Stream a condensed view to the terminal (Compiling/Finished/error/warning
     # lines only) while keeping the full output in the log file. We use
@@ -280,12 +307,14 @@ start_be() {
     # `set +e` around the pipeline so `set -e` doesn't abort the script
     # before we get a chance to read PIPESTATUS and print a helpful error.
     local build_rc=0
+    heartbeat_start "backend build" 15 "$LOG_DIR/be-build.log"
     set +e
     (cd "$BE_DIR" && cargo build --color always 2>&1) \
         | tee "$LOG_DIR/be-build.log" \
-        | { grep --color=never -E "^(   Compiling|    Finished|    Building|error|warning|help:|note:)" || true; }
+        | { grep --color=never -E "^(   Compiling|    Finished|    Building|    Updating|   Downloading| Downloaded|error|warning|help:|note:)" || true; }
     build_rc=${PIPESTATUS[0]}
     set -e
+    heartbeat_stop
     if [ "$build_rc" -ne 0 ]; then
         err "backend build FAILED (cargo exited $build_rc) — last 40 lines of $LOG_DIR/be-build.log:"
         printf -- "----------------------------------------\n"
@@ -337,13 +366,25 @@ build_ui() {
         err "UI dir not found: $UI_DIR"
         return 1
     fi
-    log "building UI (Compose wasmJs production distribution, takes a few minutes the first time)..."
+    log "building UI — first build ~3-6 min, subsequent ~30-90s. Streaming progress below; full log: $LOG_DIR/ui-build.log"
     log "  gradle task: :composeApp:wasmJsBrowserDistribution"
-    log "  full log: $LOG_DIR/ui-build.log"
-    (cd "$UI_DIR" && ./gradlew :composeApp:wasmJsBrowserDistribution) \
-        2>&1 | tee "$LOG_DIR/ui-build.log" | grep -E "BUILD|FAIL|error:" || true
-    if [ ! -f "$(ui_dist_dir)/composeApp.js" ]; then
-        err "UI build did not produce composeApp.js — see $LOG_DIR/ui-build.log"
+    : > "$LOG_DIR/ui-build.log"
+    # Broadened filter surfaces gradle task progress (`> Task :`), early
+    # config/resolve phases, dep downloads, and the terminal build result.
+    # Each filtered line is indented with `  ` so it visually nests under
+    # the `[mantis]` log lines above.
+    local ui_rc=0
+    heartbeat_start "UI build" 15 "$LOG_DIR/ui-build.log"
+    set +e
+    (cd "$UI_DIR" && ./gradlew :composeApp:wasmJsBrowserDistribution 2>&1) \
+        | tee "$LOG_DIR/ui-build.log" \
+        | { grep --color=never -E "^> Task :|^> Configure project|^> Resolve|Downloading |Download |BUILD SUCCESSFUL|BUILD FAILED|FAILURE:|error:|warning:" \
+            | sed 's/^/  /' || true; }
+    ui_rc=${PIPESTATUS[0]}
+    set -e
+    heartbeat_stop
+    if [ "$ui_rc" -ne 0 ] || [ ! -f "$(ui_dist_dir)/composeApp.js" ]; then
+        err "UI build did not produce composeApp.js (gradle exited $ui_rc) — see $LOG_DIR/ui-build.log"
         return 1
     fi
     ok "UI build done: $(ui_dist_dir)"
