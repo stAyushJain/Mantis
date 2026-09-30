@@ -117,56 +117,145 @@ case "$(uname -s)" in
     *)      PLATFORM="other" ;;
 esac
 
-# ensure_cmd <command> <friendly-name> — verify a binary exists, or print a
-# platform-aware install hint and exit non-zero. Keep messages short and
-# copy-pasteable so users can fix the problem in one step.
-ensure_cmd() {
+# ---------- auto-install helpers ----------
+#
+# ensure_or_install <command> <friendly-name> — verify a binary exists, and
+# if it's missing, install it non-interactively using the platform's native
+# package manager (Homebrew on macOS, apt-get on Linux, rustup for Rust).
+# All install output is streamed to the terminal; we re-check `command -v`
+# afterwards and treat "still missing" as fatal so the caller can bail
+# early. Designed to be `set -euo pipefail`-safe: no unquoted expansions,
+# no reliance on last-command exit codes past `if`/`||`.
+
+ensure_brew() {
+    # Full-auto Homebrew bootstrap on macOS. No-op on Linux (apt-get is used
+    # directly). We install into the default prefix; NONINTERACTIVE=1 skips
+    # the "press RETURN" prompt in Homebrew's installer script.
+    if [ "$PLATFORM" != "macos" ]; then
+        return 0
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        return 0
+    fi
+    log "  installing Homebrew (this needs sudo once)..."
+    NONINTERACTIVE=1 /bin/bash -c \
+        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+        || { err "Homebrew install failed"; return 1; }
+    # Common install prefixes: /opt/homebrew (Apple Silicon), /usr/local (Intel).
+    for prefix in /opt/homebrew /usr/local; do
+        if [ -x "$prefix/bin/brew" ]; then
+            eval "$($prefix/bin/brew shellenv)"
+            break
+        fi
+    done
+    if command -v brew >/dev/null 2>&1; then
+        ok "  Homebrew installed"
+    else
+        err "  Homebrew installed but \`brew\` still not on PATH; open a new shell and retry"
+        return 1
+    fi
+}
+
+_apt_update_once() {
+    # Cache the fact that we've already run `apt-get update` in this process
+    # so back-to-back installs don't hit the network repeatedly.
+    if [ "${_APT_UPDATED:-0}" != "1" ]; then
+        log "  running apt-get update..."
+        sudo apt-get update -y >/dev/null || warn "  apt-get update reported errors (continuing)"
+        _APT_UPDATED=1
+    fi
+}
+
+ensure_or_install() {
     local cmd="$1" name="$2"
     if command -v "$cmd" >/dev/null 2>&1; then
         return 0
     fi
-    err "missing required tool: $name (\`$cmd\` not found on PATH)"
+    log "  $name (\`$cmd\`) is missing — installing..."
+
     case "$cmd" in
         cargo|rustc|rustup)
-            printf "  install Rust (includes %s):\n" "$cmd"
-            printf "    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n"
-            printf "  then restart your shell, or run: source \"\$HOME/.cargo/env\"\n"
+            # rustup one-liner, unattended. `-y` skips the interactive prompt
+            # and installs the default stable toolchain. Source cargo env so
+            # this shell (and start_be below) sees it immediately.
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                | sh -s -- -y --default-toolchain stable --profile minimal \
+                || { err "  rustup install failed"; return 1; }
+            # shellcheck disable=SC1091
+            [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
             ;;
         java)
             if [ "$PLATFORM" = "macos" ]; then
-                printf "  install a JDK (17+ recommended):\n"
-                printf "    brew install --cask temurin\n"
+                ensure_brew || return 1
+                brew install --cask temurin || { err "  brew install temurin failed"; return 1; }
             else
-                printf "  install a JDK (17+ recommended), e.g.:\n"
-                printf "    sudo apt-get install -y temurin-17-jdk   # or your distro's openjdk-17-jdk\n"
+                _apt_update_once
+                if ! sudo apt-get install -y temurin-17-jdk 2>/dev/null; then
+                    sudo apt-get install -y openjdk-17-jdk \
+                        || { err "  apt-get install openjdk-17-jdk failed"; return 1; }
+                fi
             fi
             ;;
         python3)
             if [ "$PLATFORM" = "macos" ]; then
-                printf "  install Python 3:\n"
-                printf "    brew install python\n"
+                ensure_brew || return 1
+                brew install python || { err "  brew install python failed"; return 1; }
             else
-                printf "  install Python 3, e.g.:\n"
-                printf "    sudo apt-get install -y python3\n"
+                _apt_update_once
+                sudo apt-get install -y python3 \
+                    || { err "  apt-get install python3 failed"; return 1; }
             fi
             ;;
-        nc|curl)
+        curl|nc)
             if [ "$PLATFORM" = "macos" ]; then
-                printf "  install via Homebrew:\n    brew install %s\n" "$cmd"
+                ensure_brew || return 1
+                # On macOS `nc` ships with the base system, but users may end
+                # up here on stripped-down envs. `netcat` is the brew formula.
+                local formula="$cmd"
+                [ "$cmd" = "nc" ] && formula="netcat"
+                brew install "$formula" || { err "  brew install $formula failed"; return 1; }
             else
-                printf "  install via your package manager, e.g.:\n    sudo apt-get install -y %s\n" "$cmd"
+                _apt_update_once
+                local pkg="$cmd"
+                [ "$cmd" = "nc" ] && pkg="netcat-openbsd"
+                sudo apt-get install -y "$pkg" \
+                    || { err "  apt-get install $pkg failed"; return 1; }
             fi
             ;;
         *)
-            printf "  install \`%s\` using your platform's package manager.\n" "$cmd"
+            err "  don't know how to auto-install \`$cmd\`"
+            return 1
             ;;
     esac
-    return 1
+
+    # Re-check after install. `hash -r` clears bash's command lookup cache
+    # so a freshly-installed binary is visible without a shell restart.
+    hash -r 2>/dev/null || true
+    if command -v "$cmd" >/dev/null 2>&1; then
+        ok "  $name installed ($(command -v "$cmd"))"
+    else
+        err "  $name install completed but \`$cmd\` still not on PATH — open a new shell and retry"
+        return 1
+    fi
+}
+
+# Preflight all the tools the launcher needs. Fast when everything is
+# already installed (just `command -v` calls); loud and self-healing when
+# something is missing.
+preflight() {
+    log "── preflight: checking required tools ──"
+    ensure_or_install curl    "curl"            || return 1
+    ensure_or_install python3 "Python 3"        || return 1
+    ensure_or_install cargo   "Rust toolchain"  || return 1
+    ensure_or_install java    "JDK (17+)"       || return 1
+    ensure_or_install nc      "netcat"          || return 1
+    ok "── preflight OK ──"
 }
 
 # ----- backend -----
 
 start_be() {
+    preflight || return 1
     if pid_alive "$PID_DIR/be.pid"; then
         ok "backend already running (pid $(cat "$PID_DIR/be.pid"))"
         return
@@ -180,8 +269,6 @@ start_be() {
         err "backend dir not found: $BE_DIR"
         return 1
     fi
-
-    ensure_cmd cargo "Rust toolchain" || return 1
 
     log "building backend (cargo build, may take a minute on first run)..."
     log "  build log: $LOG_DIR/be-build.log"
@@ -209,7 +296,7 @@ start_be() {
     fi
     ok "backend build done"
 
-    log "starting backend..."
+    log "launching backend binary..."
     # Run the prebuilt binary directly so the PID we record is the real
     # process (cargo exec's into the binary, leaving the cargo PID dead).
     local bin="$BE_DIR/target/debug/mockmaster_backend"
@@ -220,8 +307,9 @@ start_be() {
     (cd "$BE_DIR" && nohup "$bin" >"$LOG_DIR/be.log" 2>&1 </dev/null &
         echo $! >"$PID_DIR/be.pid")
     disown >/dev/null 2>&1 || true
-
+    log "waiting for :3000 (backend API)..."
     wait_for_port 3000 60 "backend API"
+    log "waiting for :8080 (MITM proxy)..."
     wait_for_port 8080 5  "MITM proxy" || warn "proxy didn't come up — check $LOG_DIR/be.log"
 }
 
@@ -244,11 +332,14 @@ ui_dist_dir() {
 }
 
 build_ui() {
+    preflight || return 1
     if [ ! -d "$UI_DIR" ]; then
         err "UI dir not found: $UI_DIR"
         return 1
     fi
     log "building UI (Compose wasmJs production distribution, takes a few minutes the first time)..."
+    log "  gradle task: :composeApp:wasmJsBrowserDistribution"
+    log "  full log: $LOG_DIR/ui-build.log"
     (cd "$UI_DIR" && ./gradlew :composeApp:wasmJsBrowserDistribution) \
         2>&1 | tee "$LOG_DIR/ui-build.log" | grep -E "BUILD|FAIL|error:" || true
     if [ ! -f "$(ui_dist_dir)/composeApp.js" ]; then
@@ -288,8 +379,16 @@ stop_ui() {
 # ----- commands -----
 
 cmd_start() {
-    start_be
-    start_ui
+    log "STEP 1/4 ensuring dependencies"
+    preflight || { err "preflight failed — aborting"; return 1; }
+
+    log "STEP 2/4 backend build + launch"
+    start_be || { err "backend startup failed — aborting"; return 1; }
+
+    log "STEP 3/4 UI build + serve"
+    start_ui || { err "UI startup failed — aborting"; return 1; }
+
+    log "STEP 4/4 launching browser"
     local ip; ip=$(local_ip)
     cat <<EOF
 

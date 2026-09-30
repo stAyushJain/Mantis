@@ -20,6 +20,12 @@ data class MockRule(
     val body: String,
     @SerialName("isEnabled") val isEnabled: Boolean = true,
     @SerialName("createdAt") val createdAt: Long = 0L,
+    /**
+     * Optional free-text tag rendered as a small badge in the folder view so
+     * users can visually distinguish duplicate-path rules. Purely cosmetic —
+     * duplicates are allowed and it does NOT participate in matching.
+     */
+    val tag: String? = null,
 )
 
 @Serializable
@@ -68,6 +74,8 @@ data class UpsertRuleReq(
     @SerialName("statusCode") val statusCode: Int,
     val body: String,
     @SerialName("isEnabled") val isEnabled: Boolean = true,
+    /** Optional free-text tag — see [MockRule.tag]. */
+    val tag: String? = null,
 )
 
 @Serializable

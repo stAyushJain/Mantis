@@ -67,6 +67,7 @@ fun RuleEditorDialog(
     var statusText by remember { mutableStateOf((rule?.statusCode ?: 200).toString()) }
     var body by remember { mutableStateOf(rule?.body ?: "{\n  \n}") }
     var enabled by remember { mutableStateOf(rule?.isEnabled ?: true) }
+    var tag by remember { mutableStateOf(rule?.tag ?: "") }
     var jsonError by remember { mutableStateOf<String?>(null) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -152,6 +153,18 @@ fun RuleEditorDialog(
                     )
                 }
 
+                Spacer(Modifier.height(12.dp))
+                // Optional free-text tag. Duplicates allowed; purely visual so
+                // users can distinguish multiple rules on the same path.
+                OutlinedTextField(
+                    value = tag,
+                    onValueChange = { tag = it.take(40) },
+                    label = { Text("Tag (optional)") },
+                    placeholder = { Text("e.g. \"happy path\", \"empty list\", \"401\"") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Response body (JSON)", style = MaterialTheme.typography.titleMedium)
@@ -208,6 +221,7 @@ fun RuleEditorDialog(
                                         statusCode = statusText.toIntOrNull() ?: 200,
                                         body = finalBody,
                                         isEnabled = enabled,
+                                        tag = tag.trim().ifBlank { null },
                                     ),
                                 ).await()
                                 busy = false

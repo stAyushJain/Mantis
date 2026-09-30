@@ -28,6 +28,12 @@ pub struct MockRule {
     pub is_enabled: bool,
     #[serde(rename = "createdAt", default)]
     pub created_at: i64,
+    /// Optional free-text tag rendered as a small badge in the UI so users can
+    /// visually distinguish duplicate-path rules within a folder. Purely
+    /// cosmetic — does NOT participate in request matching. Defaulted for
+    /// backwards-compatible loading of existing on-disk JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 fn default_method() -> String {

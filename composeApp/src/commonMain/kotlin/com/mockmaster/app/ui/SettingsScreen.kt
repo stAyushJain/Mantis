@@ -91,8 +91,18 @@ fun SettingsScreen(state: AppState) {
                 state.serverInfo?.let {
                     Spacer(Modifier.height(6.dp))
                     InfoLine("Status", it.status)
-                    InfoLine("Proxy", "${it.proxyHost}:${it.proxyPort}")
-                    InfoLine("API", "127.0.0.1:${it.apiPort}")
+                    InfoLine(
+                        "Proxy",
+                        "${it.proxyHost}:${it.proxyPort}",
+                        copyable = true,
+                        onCopied = { state.showToast("Proxy address copied") },
+                    )
+                    InfoLine(
+                        "API",
+                        "127.0.0.1:${it.apiPort}",
+                        copyable = true,
+                        onCopied = { state.showToast("API address copied") },
+                    )
                     InfoLine("Local IP", it.localIp ?: "unavailable")
                     InfoLine("Version", it.version)
                 } ?: Text("Backend not reachable.", color = MockColors.danger)
@@ -126,9 +136,21 @@ private fun countAllFolders(nodes: List<com.mockmaster.shared.FolderNode>): Int 
 }
 
 @Composable
-private fun InfoLine(label: String, value: String) {
-    Row(modifier = Modifier.padding(vertical = 2.dp)) {
+private fun InfoLine(
+    label: String,
+    value: String,
+    copyable: Boolean = false,
+    onCopied: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.padding(vertical = 2.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
         Text(label, color = MockColors.textSecondary, modifier = Modifier.width(140.dp))
         Text(value)
+        if (copyable) {
+            Spacer(Modifier.width(8.dp))
+            CopyIconButton(value = value, onCopied = onCopied)
+        }
     }
 }

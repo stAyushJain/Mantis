@@ -4,6 +4,7 @@ package com.mockmaster.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,8 +16,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.mockmaster.app.platform.FileIo
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +129,49 @@ fun Card(
         shape = RoundedCornerShape(8.dp),
     ) {
         Box(Modifier.padding(padding)) { content() }
+    }
+}
+
+/**
+ * Small inline "copy" affordance intended to sit inside compact info chips
+ * (Proxy / API / Backend URL — anything a user is likely to paste into
+ * phone-side proxy settings). Tapping copies [value] to the clipboard and
+ * briefly swaps the icon for a check mark; if [onCopied] is non-null we
+ * also invoke it so the caller can raise a toast, log, etc.
+ *
+ * The icon animation is intentionally cheap: a boolean flag flipped for
+ * ~1.5s via a LaunchedEffect. No animation APIs, no snackbar plumbing —
+ * we already have transient toasts elsewhere in the app for redundancy.
+ */
+@Composable
+fun CopyIconButton(
+    value: String,
+    modifier: Modifier = Modifier,
+    onCopied: (() -> Unit)? = null,
+) {
+    var justCopied by remember { mutableStateOf(false) }
+    LaunchedEffect(justCopied) {
+        if (justCopied) {
+            delay(1500)
+            justCopied = false
+        }
+    }
+    Box(
+        modifier = modifier
+            .size(20.dp)
+            .clickable {
+                FileIo.copyToClipboard(value)
+                justCopied = true
+                onCopied?.invoke()
+            },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+            contentDescription = if (justCopied) "Copied" else "Copy $value",
+            tint = if (justCopied) MockColors.success else MockColors.textSecondary,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }
 

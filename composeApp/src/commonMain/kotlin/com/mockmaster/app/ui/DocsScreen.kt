@@ -55,8 +55,18 @@ fun DocsScreen(state: AppState) {
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    InfoChip("Proxy", "$proxyHost:$proxyPort")
-                    InfoChip("API", "127.0.0.1:${info?.apiPort ?: 3000}")
+                    InfoChip(
+                        "Proxy",
+                        "$proxyHost:$proxyPort",
+                        copyable = true,
+                        onCopied = { state.showToast("Proxy address copied") },
+                    )
+                    InfoChip(
+                        "API",
+                        "127.0.0.1:${info?.apiPort ?: 3000}",
+                        copyable = true,
+                        onCopied = { state.showToast("API address copied") },
+                    )
                     InfoChip("Status", info?.status ?: "unknown")
                     Button(
                         onClick = { kotlinx.browser.window.open(MockMasterApi.certUrl(), "_self") },
@@ -147,7 +157,12 @@ fun DocsScreen(state: AppState) {
 }
 
 @Composable
-private fun InfoChip(label: String, value: String) {
+private fun InfoChip(
+    label: String,
+    value: String,
+    copyable: Boolean = false,
+    onCopied: (() -> Unit)? = null,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -157,6 +172,10 @@ private fun InfoChip(label: String, value: String) {
         Text(label, color = MockColors.textSecondary, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.width(6.dp))
         Text(value, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+        if (copyable) {
+            Spacer(Modifier.width(6.dp))
+            CopyIconButton(value = value, onCopied = onCopied)
+        }
     }
 }
 

@@ -114,9 +114,19 @@ private fun TopBar(state: AppState) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(running, if (running) "Proxy running" else "Proxy stopped")
                 Spacer(Modifier.width(16.dp))
-                ServerInfoChip("Proxy", info.localIp?.let { "$it:${info.proxyPort}" } ?: "127.0.0.1:${info.proxyPort}")
+                ServerInfoChip(
+                    "Proxy",
+                    info.localIp?.let { "$it:${info.proxyPort}" } ?: "127.0.0.1:${info.proxyPort}",
+                    copyable = true,
+                    onCopied = { state.showToast("Proxy address copied") },
+                )
                 Spacer(Modifier.width(8.dp))
-                ServerInfoChip("API", "127.0.0.1:${info.apiPort}")
+                ServerInfoChip(
+                    "API",
+                    "127.0.0.1:${info.apiPort}",
+                    copyable = true,
+                    onCopied = { state.showToast("API address copied") },
+                )
                 if (state.isFlowActive) {
                     Spacer(Modifier.width(8.dp))
                     FlowActiveChip(state.activeFlow?.name ?: "Active flow")
@@ -166,7 +176,12 @@ private fun TopBar(state: AppState) {
 }
 
 @Composable
-private fun ServerInfoChip(label: String, value: String) {
+private fun ServerInfoChip(
+    label: String,
+    value: String,
+    copyable: Boolean = false,
+    onCopied: (() -> Unit)? = null,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -176,6 +191,10 @@ private fun ServerInfoChip(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MockColors.textSecondary)
         Spacer(Modifier.width(6.dp))
         Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        if (copyable) {
+            Spacer(Modifier.width(6.dp))
+            CopyIconButton(value = value, onCopied = onCopied)
+        }
     }
 }
 

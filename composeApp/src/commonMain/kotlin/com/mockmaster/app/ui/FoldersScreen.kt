@@ -257,6 +257,27 @@ private fun FolderTreeNode(
     }
 }
 
+/**
+ * Small visual badge for a rule's optional `tag`. Distinct enough from the
+ * method / status pills so users can eyeball a folder full of same-path
+ * rules and immediately see which is which. Purely cosmetic.
+ */
+@Composable
+private fun TagBadge(text: String) {
+    Box(
+        modifier = Modifier
+            .background(MockColors.accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text,
+            color = MockColors.accent,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
 @Composable
 private fun FolderActionChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, onClick: () -> Unit) {
     OutlinedButton(
@@ -357,8 +378,12 @@ private fun RuleRow(
                     rule.path,
                     fontFamily = FontFamily.Monospace,
                     color = MockColors.textPrimary.copy(alpha = alpha),
-                    modifier = Modifier.weight(1f),
                 )
+                rule.tag?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.width(6.dp))
+                    TagBadge(it)
+                }
+                Spacer(Modifier.weight(1f))
                 Switch(
                     checked = rule.isEnabled,
                     onCheckedChange = { state.toggleRule(folderId, rule.id, it) },

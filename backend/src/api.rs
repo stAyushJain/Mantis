@@ -59,6 +59,9 @@ pub struct UpsertRuleReq {
     pub body: String,
     #[serde(rename = "isEnabled", default = "default_true")]
     pub is_enabled: bool,
+    /// Optional free-text tag; see `MockRule::tag`.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -377,6 +380,10 @@ pub async fn upsert_rule(
         body: req.body,
         is_enabled: req.is_enabled,
         created_at: chrono::Utc::now().timestamp_millis(),
+        tag: req.tag.and_then(|s| {
+            let t = s.trim().to_string();
+            if t.is_empty() { None } else { Some(t) }
+        }),
     };
     {
         let mut state = vault.lock().unwrap();
@@ -406,6 +413,10 @@ pub async fn put_rule(
         body: req.body,
         is_enabled: req.is_enabled,
         created_at: chrono::Utc::now().timestamp_millis(),
+        tag: req.tag.and_then(|s| {
+            let t = s.trim().to_string();
+            if t.is_empty() { None } else { Some(t) }
+        }),
     };
     {
         let mut state = vault.lock().unwrap();

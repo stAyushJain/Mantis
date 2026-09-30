@@ -348,7 +348,18 @@ private fun LogRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MethodPill(call.method)
                 Spacer(Modifier.width(6.dp))
-                if (call.matched) StatusPill(call.statusCode) else SourceBadge("PASS")
+                // Colour-coded status pill for every call — success/redirect/
+                // client-err/server-err jump out at a glance. For passthroughs
+                // we still tack on the PASS badge to distinguish them from
+                // mocked responses.
+                if (call.statusCode > 0) {
+                    StatusPill(call.statusCode)
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (!call.matched) {
+                    SourceBadge("PASS")
+                    Spacer(Modifier.width(2.dp))
+                }
                 Spacer(Modifier.width(8.dp))
                 Text(
                     call.path,
@@ -412,13 +423,32 @@ private fun LogDetail(call: InterceptedCall, state: AppState, onPromote: () -> U
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MethodPill(call.method)
                 Spacer(Modifier.width(8.dp))
-                if (call.matched) StatusPill(call.statusCode)
-                Spacer(Modifier.width(8.dp))
+                if (call.statusCode > 0) {
+                    StatusPill(call.statusCode)
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(
                     if (call.matched) "Mocked (${call.matchSource})" else "Passthrough",
                     color = if (call.matched) MockColors.success else MockColors.textSecondary,
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (call.statusCode >= 400) {
+                    Spacer(Modifier.width(8.dp))
+                    // Tiny "Error" flag next to the mocked/passthrough label
+                    // so 4xx/5xx responses stand out at the top of the panel.
+                    Surface(
+                        color = (if (call.statusCode >= 500) MockColors.danger else MockColors.warning).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            "Error",
+                            color = if (call.statusCode >= 500) MockColors.danger else MockColors.warning,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
                 Spacer(Modifier.weight(1f))
                 // Copy-as-cURL: rebuilds a reproducible cURL from the
                 // intercepted request (method + url + headers + body). Handy
@@ -443,6 +473,27 @@ private fun LogDetail(call: InterceptedCall, state: AppState, onPromote: () -> U
             Text(call.url, fontFamily = FontFamily.Monospace)
             Text(call.timestamp, style = MaterialTheme.typography.bodySmall, color = MockColors.textSecondary)
 
+            // "Status  <code>" labelled line — useful to scan even when the
+            // status pill in the header is already visible, and pairs nicely
+            // with the "Error" tag for 4xx/5xx.
+            if (call.statusCode > 0) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Status",
+                        color = MockColors.textSecondary,
+                        modifier = Modifier.width(120.dp),
+                    )
+                    StatusPill(call.statusCode)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        call.statusCode.toString(),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
             DetailSection("Request headers") {
                 if (call.requestHeaders.isEmpty()) Text("(none)", color = MockColors.textSecondary)
@@ -459,7 +510,12 @@ private fun LogDetail(call: InterceptedCall, state: AppState, onPromote: () -> U
                 else CodeBlock(call.requestBody)
             }
             Spacer(Modifier.height(12.dp))
-            val responseTitle = if (call.matched) "Mocked response" else "Upstream response"
+            val responseTitle = when {
+                // 4xx/5xx: relabel so users spot error bodies immediately.
+                call.statusCode >= 400 -> "Error body"
+                call.matched -> "Mocked response"
+                else -> "Upstream response"
+            }
             DetailSectionWithCopy(
                 title = responseTitle,
                 copyEnabled = call.responseBody.isNotBlank(),
