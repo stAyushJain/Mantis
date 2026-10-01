@@ -404,8 +404,25 @@ start_ui() {
         build_ui
     fi
 
-    log "serving UI on http://127.0.0.1:$UI_PORT"
-    (cd "$(ui_dist_dir)" && nohup python3 -m http.server "$UI_PORT" >"$LOG_DIR/ui.log" 2>&1 </dev/null &
+    log "serving UI on http://127.0.0.1:$UI_PORT (no-cache headers)"
+    # Serve the built wasm/js bundle with aggressive no-cache headers so
+    # browsers don't hold onto a stale composeApp.wasm across rebuilds.
+    # The marker comment `mantis-ui-server` inside the python code makes
+    # the process uniquely greppable for stop_ui without risking a match
+    # on unrelated python processes.
+    (cd "$(ui_dist_dir)" && nohup python3 -c '
+# mantis-ui-server
+import http.server, socketserver, sys
+class H(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+port = int(sys.argv[1])
+with socketserver.TCPServer(("", port), H) as httpd:
+    httpd.serve_forever()
+' "$UI_PORT" >"$LOG_DIR/ui.log" 2>&1 </dev/null &
         echo $! >"$PID_DIR/ui.pid")
     disown >/dev/null 2>&1 || true
 
@@ -414,7 +431,9 @@ start_ui() {
 
 stop_ui() {
     stop_pid_file "$PID_DIR/ui.pid" "UI server"
-    pkill -f "http.server $UI_PORT" >/dev/null 2>&1 || true
+    # Match the unique marker string embedded in the python program above,
+    # so we don't accidentally kill unrelated python processes.
+    pkill -f "mantis-ui-server" >/dev/null 2>&1 || true
 }
 
 # ----- commands -----
